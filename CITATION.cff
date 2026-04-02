@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this formalisation, please cite the Zenodo DOI corresponding to this version."
+title: "An Euler-Faithful Lean 4 Formalization of the Basel Problem"
+type: software
+version: "v1.0.0"
+authors:
+  - family-names: Jefferson
+    given-names: Bob
+    orcid: "https://orcid.org/0009-0003-1460-055X"
+year: 2026
+license: MIT
+repository-code: "https://doi.org/10.5281/zenodo.XXXXXXX"

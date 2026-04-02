@@ -1,0 +1,1202 @@
+\documentclass[11pt,a4paper]{article}
+\errorcontextlines=50
+% ------------------------------------------------------------
+% Page layout (house style)
+% ------------------------------------------------------------
+\usepackage[a4paper,margin=3cm,bottom=3.2cm]{geometry}
+\emergencystretch=1em
+
+% ------------------------------------------------------------
+% Mathematics
+% ------------------------------------------------------------
+\usepackage{amsmath,amsthm,mathtools}
+
+% ------------------------------------------------------------
+% Fonts / Unicode (LuaLaTeX)
+% ------------------------------------------------------------
+\usepackage{fontspec}
+\usepackage{unicode-math}
+\setmainfont{Latin Modern Roman}
+\setmathfont{Latin Modern Math}
+
+% ------------------------------------------------------------
+% Graphics and floats
+% ------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{placeins} % \FloatBarrier
+\usepackage{float}
+
+% ------------------------------------------------------------
+% Verbatim / code excerpts (Unicode-safe)
+% ------------------------------------------------------------
+\usepackage{fancyvrb}
+\usepackage{fvextra} % breaklines, breakanywhere for Verbatim
+
+% ------------------------------------------------------------
+% Lists
+% ------------------------------------------------------------
+\usepackage{enumitem}
+
+% ------------------------------------------------------------
+% URLs / paths (robust line breaking)
+% ------------------------------------------------------------
+\usepackage{url}
+\usepackage{xurl}
+\makeatletter
+\@ifundefined{Urlmuskip}{}{%
+  \Urlmuskip=0mu plus 1mu
+}
+\makeatother
+
+% ------------------------------------------------------------
+% Links + PDF bookmarks
+% ------------------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+\hypersetup{unicode=true}
+\usepackage{bookmark}
+
+% ------------------------------------------------------------
+% Bibliography (biblatex + biber)
+% ------------------------------------------------------------
+\usepackage[backend=biber,style=alphabetic,maxbibnames=99]{biblatex}
+\addbibresource{references.bib}
+
+% Hide access dates (“visited on ...”) for online sources
+\AtEveryBibitem{%
+  \clearfield{urldate}%
+  \clearfield{urlyear}%
+  \clearfield{urlmonth}%
+  \clearfield{urlday}%
+}
+\renewbibmacro*{urldate}{}
+
+% ------------------------------------------------------------
+% Theorems
+% ------------------------------------------------------------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+% ------------------------------------------------------------
+% Convenience macros
+% ------------------------------------------------------------
+% File paths / module paths (robust in headings/captions)
+\DeclareRobustCommand{\codepath}[1]{\nolinkurl{#1}}
+
+% Safe math in section titles: first arg TeX, second arg plain text for bookmarks
+\newcommand{\msec}[2]{\texorpdfstring{#1}{#2}}
+
+% Basic number sets (safe in text or math)
+\newcommand{\C}{\ensuremath{\mathbb{C}}}
+\newcommand{\R}{\ensuremath{\mathbb{R}}}
+\newcommand{\N}{\ensuremath{\mathbb{N}}}
+
+% Filters / neighbourhood notation (paper-level)
+\newcommand{\nhds}{\ensuremath{\mathcal{N}}}
+\newcommand{\nhdsP}[1]{\ensuremath{\mathcal{N}[#1]}}
+\newcommand{\nhdsPunct}[1]{\ensuremath{\mathcal{N}[{\neq}]\,#1}}
+
+% Lean identifier styling (robust in headings/captions)
+\DeclareRobustCommand{\leanid}[1]{\texttt{#1}}
+
+% Prefer \nolinkurl for file paths (breakable, safe, not clickable)
+\DeclareRobustCommand{\codepath}[1]{\nolinkurl{#1}}
+
+% Named objects from the development (safe in text or math)
+\newcommand{\baselSum}{\ensuremath{\mathsf{baselSum}}}
+\newcommand{\baselTerm}{\ensuremath{\mathsf{baselTerm}}}
+
+% TeX-safe command names
+\newcommand{\sinDivPiZZero}{\leanid{sinDivPiZ0}}
+\newcommand{\eulerLimitFun}{\ensuremath{\mathsf{eulerLimitFun}}}
+
+% Operator-style name
+\DeclareMathOperator{\logDeriv}{logDeriv}
+
+% Little-o notation (paper-level)
+\newcommand{\littleo}{\ensuremath{o}}
+
+% Title info
+\title{An Euler-Faithful Lean~4 Formalization of the Basel Problem}
+\author{Bob Jefferson}
+\date{February 22, 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present a Lean~4 formalization of an Euler-faithful proof of the Basel identity
+\[
+\sum_{n=1}^{\infty} \frac{1}{n^{2}} = \frac{\pi^{2}}{6}.
+\]
+Rather than following a modern Fourier or Parseval route, the development reconstructs Euler's product-over-zeros strategy for $\sin(\pi z)$ and completes the quadratic coefficient comparison at $z=0$ using fully explicit local analytic arguments.
+
+The central technical step replaces Euler's informal coefficient extraction from an infinite product by a punctured-neighbourhood analysis of a $0$-patched Euler-product limit function. Control of its logarithmic derivative is established via dominated convergence for infinite sums with a uniform summable domination bound. A weighted segment integral identity along the path $s \mapsto sz$ reconstructs the quadratic term from this first-order asymptotic. A general quadratic coefficient uniqueness lemma then identifies the Basel sum.
+
+The development builds with \texttt{lake build} and is organized in a modular, audit-friendly architecture mirroring the logical structure of the analytic argument. The development demonstrates how a historically structured analytic proof can be rendered fully rigorous in Lean~4 while preserving its original conceptual framework.
+\end{abstract}
+
+\clearpage
+
+\begingroup
+\hypersetup{hidelinks}
+\tableofcontents
+\endgroup
+
+\clearpage
+
+\section{Introduction}
+
+The Basel problem asks for the value of the convergent series
+\[
+\sum_{n=1}^{\infty} \frac{1}{n^{2}}.
+\]
+Euler's solution from the 1730s is now celebrated for the identity \(\pi^{2}/6\), but its lasting significance lies equally in the method. Euler treated \(\sin(\pi z)\) as if it were an infinite polynomial with known zeros, wrote down the corresponding infinite product, and compared coefficients in a small-\(z\) expansion\cite{EulerE041}. In modern terms, this is a coefficient identification argument driven by a product over roots.
+
+The present work addresses a precise question: can this historically pivotal argument be rendered with full modern rigor inside a proof assistant? By ``Euler-faithful'' we mean that the proof preserves Euler’s product-over-zeros and coefficient comparison strategy in its global structure, while replacing informal infinite-product manipulations with rigorously justified local analytic arguments.
+
+From a contemporary perspective, the same identity admits many modern proofs, and existing libraries support standard analytic routes. The purpose of this development is therefore not to obtain a new evaluation of \(\zeta(2)\), but to provide a fully formal, audit-friendly reconstruction of Euler’s product-and-coefficient strategy. The guiding principle is structural fidelity: the architecture of Euler’s argument is retained, while analytically implicit steps are replaced by explicit local arguments acceptable within Lean~4.
+
+\subsection{Formal statement}
+
+In the formal development we define
+\[
+\baselSum \;:=\; \sum_{n=0}^{\infty} \frac{1}{(n+1)^{2}},
+\]
+and prove the identity
+\[
+\baselSum = \frac{((\pi : \mathbb{R}) : \mathbb{C})^{2}}{6}.
+\]
+By a simple reindexing argument, this yields the classical real statement
+\[
+\sum_{n=1}^{\infty} \frac{1}{n^{2}} = \frac{\pi^{2}}{6}.
+\]
+The final theorem is proved in \codepath{EulerBasel/CoefficientComparison.lean}, and the repository builds with \texttt{lake build}.
+
+\subsection{Why follow Euler's route in a proof assistant?}
+
+Formalizing the Euler-style argument serves a purpose beyond reproving a classical identity. Euler’s reasoning illustrates a powerful informal principle: a function may be reconstructed from its zeros together with local normalization, and coefficients can then be identified by comparison. In modern complex analysis this principle is standard, but Euler applied it before the relevant analytic foundations were fully articulated.
+
+A formal development forces a precise separation between structural insight and analytic commitment. Convergence of infinite products, legitimacy of termwise operations, and removable singularities cannot remain implicit. By preserving the global architecture of Euler’s argument while isolating and discharging its analytic obligations explicitly, the formalization clarifies which parts of the reasoning are conceptual and which require substantive justification.
+
+In this sense, the project is not only a verification of a classical result, but also an examination of how historically significant analytic arguments can be translated into the language of contemporary formal mathematics.
+
+\subsection{Methodological contribution}
+
+The principal technical innovation concerns coefficient extraction from an infinite product. Rather than expanding the product directly, we pass to its logarithmic derivative, thereby converting multiplicative structure into additive structure. The logarithmic derivative is rewritten as a \texttt{tsum} of rational terms, and a punctured-neighbourhood asymptotic is established using dominated convergence with a uniform summable domination bound.
+
+A weighted segment integral identity along the path \(s \mapsto sz\) then reconstructs a quadratic expansion of the normalized function from this linear asymptotic. A general quadratic coefficient uniqueness lemma finally identifies the coefficient. This approach isolates the analytic commitments hidden in Euler’s original reasoning while preserving its conceptual structure. The resulting pattern provides a reusable template for formalizing similar coefficient-comparison arguments in Lean.
+
+\paragraph{Scope of ``Euler-faithful''.}
+The term \emph{Euler-faithful} in this paper refers to the preserved global architecture of the proof after the sine product is available, namely: (i) a product-over-zeros viewpoint for \(\sin(\pi z)\), (ii) normalization at \(z=0\), and (iii) coefficient identification via a quadratic comparison. We do not attempt to formalize Euler’s original eighteenth-century derivation of the infinite product for \(\sin(\pi z)\), which predates the modern Weierstrass theory of entire functions. Instead, we assume a rigorously established product representation as library infrastructure and focus on the subsequent step that is most characteristic of Euler’s Basel argument, the extraction of the quadratic coefficient from the product side. The main contribution is therefore a fully formal reconstruction of Euler’s coefficient-comparison mechanism, with the analytic commitments made explicit and verified in Lean.
+
+\subsection{High-level proof outline}
+
+We work with the normalized function
+\[
+\sinDivPiZZero(z) := \frac{\sin(\pi z)}{\pi z},
+\]
+which is holomorphic near \(z = 0\) and satisfies \(\sinDivPiZZero(0) = 1\). The argument produces two quadratic expansions at the origin, obtained by distinct analytic mechanisms, and concludes with a uniqueness step that identifies the quadratic coefficient.
+
+\paragraph{Sine-side expansion.}
+From a cubic expansion of \(\sin z\) at \(0\), division by \(z\) yields
+\[
+\frac{\sin z}{z} = 1 - \frac{1}{6} z^{2} + o(z^{2})
+\quad \text{as } z \to 0.
+\]
+Scaling by \(\pi\) provides the expansion of \(\sinDivPiZZero\) with coefficient \(\pi^{2}/6\).
+
+\paragraph{Product-side expansion.}
+On the product side we construct finite Euler products, pass to a limit function, and study its logarithmic derivative. After rewriting it as a \texttt{tsum} of rational terms, we prove the punctured-neighbourhood asymptotic
+\[
+\logDeriv(\eulerLimitFun)(z)
+= -2\,\baselSum\, z + o(z)
+\quad \text{as } z \to 0.
+\]
+The linear term arises from explicit termwise cancellation at \(z = 0\), and dominated convergence justifies passing this cancellation through the infinite sum. A weighted segment integral representation then yields
+\[
+\sinDivPiZZero(z)
+= 1 - \baselSum\, z^{2} + o(z^{2})
+\quad \text{as } z \to 0.
+\]
+
+\paragraph{Quadratic uniqueness.}
+If
+\[
+f(z) = 1 - a z^{2} + o(z^{2})
+\quad \text{and} \quad
+f(z) = 1 - b z^{2} + o(z^{2}),
+\]
+then \(a = b\). Applying this to the sine-side and product-side expansions yields
+\(\baselSum = \pi^{2}/6\).
+
+\subsection{Technical remarks}
+
+\paragraph{Local logarithmic derivative.}
+Only the logarithmic derivative \(f'/f\) is used, defined locally where \(f \neq 0\). No global branch of the complex logarithm is introduced.
+
+\paragraph{Uniform domination.}
+The dominated convergence argument is carried out on a fixed punctured neighbourhood \texttt{nearZeroPunctured}, with a uniform bound
+\(\lVert \mathsf{tTerm}(n,z)\rVert \le b_{R}(n)\)
+and \(\sum b_{R}(n)\) summable.
+
+\subsection{Scope and limitations}
+
+This development does not attempt to formalize Euler’s original derivation of the sine product itself, nor does it aim to minimize analytic infrastructure. The contribution lies in the structurally faithful reconstruction of the product-and-coefficient argument within Lean~4. Other formal proofs of the Basel problem proceed by different routes; the present work should be viewed as complementary rather than competitive.
+
+\subsection{File structure}
+
+The sine-side expansion appears in \codepath{EulerBasel/SinDivZExpansion.lean} and \codepath{EulerBasel/CoefficientSineSide.lean}.  
+The Euler-product limit function and log-derivative infrastructure are developed in \codepath{EulerBasel/CoefficientEulerLicensing.lean}, \codepath{EulerBasel/EulerLimitFunDeriv.lean}, and related modules.  
+The dominated convergence step is implemented in \codepath{EulerBasel/CoefficientProductSide_Phase2C.lean}.  
+The weighted segment integral machinery is implemented in
+\codepath{EulerBasel/WeightedSegmentIntegral.lean} and
+\codepath{EulerBasel/QuadraticReconstruction.lean}.
+The resulting quadratic bridge, converting the log-derivative asymptotic to a quadratic
+expansion, is packaged in
+\codepath{EulerBasel/CoefficientProductSide_QuadraticBridge.lean}.
+The final comparison appears in \codepath{EulerBasel/CoefficientComparison.lean}.
+
+\section{Notation and definitions}
+
+We work over the complex numbers and write $z$ for a complex variable. 
+The proof, following Euler’s strategy, consists of obtaining and comparing two quadratic expansions at the origin of a normalized function derived from $\sin(\pi z)$. Euler’s product is naturally expressed in terms of the zeros of $\sin(\pi z)$ at the integers. Dividing by $\pi z$ yields a normalization that fixes the constant term at $1$, making coefficient comparison at $0$ well-posed: the first nontrivial information appears in the quadratic term.
+
+\subsection{Normalized sine function}
+
+Define
+\[
+\sinDivPiZZero(z) := \frac{\sin(\pi z)}{\pi z},
+\]
+with the value at $z = 0$ given by continuous extension, so that $\sinDivPiZZero(0) = 1$. In Lean this is the definition \sinDivPiZZero\ in \codepath{EulerBasel/CoefficientDefs.lean}.
+
+The argument centers on quadratic expansions of the form
+\[
+\sinDivPiZZero(z) = 1 - A z^{2} + o(z^{2})
+\quad \text{as } z \to 0,
+\]
+for explicitly identified coefficients $A$.
+
+\subsection{Indexing conventions and the Basel terms}
+
+We index sums over $\mathbb{N} = \{0,1,2,\dots\}$. Define
+\[
+\baselTerm(n) := \frac{1}{(n+1)^{2}},
+\qquad
+\baselSum := \sum_{n=0}^{\infty} \baselTerm(n)
+= \sum_{n=0}^{\infty} \frac{1}{(n+1)^{2}}.
+\]
+This convention avoids repeated index shifts in the formalization. The classical series is recovered by reindexing:
+\[
+\sum_{n=1}^{\infty} \frac{1}{n^{2}} = \baselSum.
+\]
+
+\subsection{Filters and asymptotic notation}
+
+Local statements at the origin are expressed using filter-based asymptotics. We write
+\[
+f(z) = o\bigl(g(z)\bigr)
+\quad \text{as } z \to 0
+\]
+to denote the Lean statement \texttt{f =o[\nhds 0] g}. For punctured limits we write
+\[
+f(z) = o\bigl(g(z)\bigr)
+\quad \text{as } z \to 0 \text{ within the punctured neighbourhood},
+\]
+meaning \texttt{f =o[\nhdsPunct{0}] g}, where $\nhdsPunct{0}$ is the neighbourhood filter at $0$ restricted to $\{z \mid z \neq 0\}$.
+
+The punctured filter is essential on the product side because logarithmic derivatives and normalizations involve division by $z$. Several key asymptotics are first established on $\nhdsPunct{0}$ and subsequently upgraded to ordinary convergence at $0$ via a removable singularity argument. The product-side analysis naturally yields punctured information, whereas the final coefficient comparison requires asymptotics on $\nhds 0$.
+
+\subsection{Series notation and summability}
+
+We write $\sum_{n=0}^{\infty} a_{n}$ for an infinite sum.
+In Lean this is written as \texttt{tsum (fun n => a n)}.
+Summability is handled explicitly: any rewriting of a function as a
+\texttt{tsum} is accompanied by a proof of \texttt{Summable}.
+This is crucial on the product side, where dominated convergence is used
+to justify passing limits through infinite sums.
+
+\subsection{Euler product side and the logarithmic derivative}
+
+On the product side we consider finite Euler products and their limit function, denoted \texttt{eulerLimitFun}. The central analytic object is the logarithmic derivative
+\[
+\logDeriv(f)(z) := \frac{f'(z)}{f(z)},
+\]
+defined wherever $f(z) \neq 0$. This is a local quotient and does not require a global branch of the complex logarithm.
+
+The key punctured asymptotic is
+\[
+\logDeriv(\eulerLimitFun)(z)
+= -2\,\baselSum\,z + o(z)
+\quad \text{as } z \to 0 \text{ within } \nhdsPunct{0}.
+\]
+This statement replaces Euler’s informal coefficient extraction from the infinite product with a rigorously justified local asymptotic. A weighted segment integral identity along the path \(s \mapsto s z\) then produces the quadratic expansion of the normalized product-side expression.
+
+\subsection{Quadratic coefficient uniqueness}
+
+To identify the Basel coefficient, we use an abstract uniqueness lemma for quadratic expansions. If
+\[
+f(z) = 1 - a z^{2} + o(z^{2})
+\quad \text{and} \quad
+f(z) = 1 - b z^{2} + o(z^{2})
+\quad \text{as } z \to 0,
+\]
+then $a = b$. The lemma is proved in \codepath{EulerBasel/QuadraticCoefficient.lean}. Its proof relies only on elementary asymptotic reasoning and does not use any special properties of $\sinDivPiZZero$ or Euler products. For reference, the Lean declaration appears in Section 6.8.
+
+\subsection{File map for notation}
+
+The definitions \texttt{baselTerm}, \texttt{baselSum}, and \sinDivPiZZero\ appear in
+\codepath{EulerBasel/CoefficientDefs.lean}. Punctured neighbourhood infrastructure is developed in \codepath{EulerBasel/TopologyPunctured.lean}. The Euler-product limit function and its log-derivative control are implemented in \codepath{EulerBasel/CoefficientEulerLicensing.lean} and \codepath{EulerBasel/EulerLimitFunDeriv.lean}. Quadratic reconstruction and the weighted segment identity are contained in the \codepath{EulerBasel/QuadraticReconstruction_*} files. The final coefficient comparison appears in \codepath{EulerBasel/CoefficientComparison.lean}.
+
+\subsection{Lean/mathlib notation}
+
+We use standard mathlib conventions:
+
+\begin{itemize}[leftmargin=2em]
+\item $\mathcal{N}(0)$ denotes the neighbourhood filter at $0$. The punctured neighbourhood filter
+$\mathcal{N}[{\neq}]\,0$ is the restriction of $\mathcal{N}(0)$ to $\{ z \mid z \neq 0 \}$.
+In Lean, one convenient ASCII form is
+\texttt{nhdsWithin (0 : Complex) \{z | z != 0\}},
+meaning “for all sufficiently small $z \neq 0$”.
+
+\item \texttt{tsum} denotes the infinite sum $\sum_{n=0}^{\infty} a_n$ of a summable
+family in a complete normed space.
+
+\item $f(z) = o(g(z))$ as $z \to 0$ is expressed in Lean via
+\texttt{Asymptotics.IsLittleO}.
+\end{itemize}
+
+\section{\msec{Sine-side expansion of \ensuremath{\sin(\pi z)/(\pi z)} near \ensuremath{0}}{Sine-side expansion of sin(pi z)/(pi z) near 0}}
+
+This section formalizes the sine-side of Euler’s coefficient comparison. The objective is a rigorous quadratic expansion at the origin for the normalized function
+\[
+\sinDivPiZZero(z) := \frac{\sin(\pi z)}{\pi z},
+\]
+in a form directly comparable with the product-side expansion. While Euler would simply invoke the power series for $\sin z$, the formal development requires a fully justified asymptotic expansion with a controlled $o(z^{2})$ remainder, matching the hypotheses of the quadratic coefficient uniqueness lemma.
+
+\subsection{\msec{From a cubic expansion of \ensuremath{\sin z}}{From a cubic expansion of sin z}}
+
+We begin with a cubic expansion of $\sin z$ at the origin:
+\[
+\sin z = z - \frac{1}{6} z^{3} + o(z^{3})
+\qquad (z \to 0).
+\]
+In the formal development this is expressed using filter-based asymptotics. The key step is a punctured-neighbourhood limit for the normalized error term $(\sin z - z)/z^{3}$, established via dominated convergence with an explicit summable domination bound on a fixed punctured neighbourhood. The remainder is thereby packaged as a genuine $o(z^{3})$ term.
+
+\subsection{\msec{Normalization by division}{Normalization by division}}
+Euler’s coefficient comparison is naturally formulated for $\sin(\pi z)/(\pi z)$ rather than for $\sin(\pi z)$, since the latter vanishes at $0$. Dividing by $\pi z$ removes this zero and produces a function with value $1$ at the origin, making the quadratic coefficient the first nontrivial term.
+
+Formally, we pass from the cubic expansion of $\sin z$ to a quadratic expansion of $\sin z / z$:
+\[
+\sin z = z - \frac{1}{6} z^{3} + o(z^{3})
+\ \Longrightarrow\
+\frac{\sin z}{z} = 1 - \frac{1}{6} z^{2} + o(z^{2}).
+\]
+Division by $z$ is handled first on the punctured neighbourhood $\mathcal{N}[{\neq}]\,0$, where $z \neq 0$, and then extended to a full neighbourhood statement by a removable-singularity argument. Concretely, the remainder term is defined to agree with
+\[
+\frac{\sin z}{z} - \Bigl(1 - \frac{1}{6} z^{2}\Bigr)
+\]
+for $z \neq 0$ and is set to $0$ at $z = 0$. This patch preserves the asymptotic behavior and allows the use of standard \texttt{IsLittleO} lemmas without additional side conditions.
+
+\subsection{\msec{Quadratic expansion of \ensuremath{\sin z/z}}{Quadratic expansion of sin z / z}}
+
+We obtain the quadratic expansion
+\[
+\frac{\sin z}{z} = 1 - \frac{1}{6} z^{2} + o(z^{2})
+\qquad (z \to 0),
+\]
+proved in \texttt{EulerBasel/SinDivZExpansion.lean}. The statement is expressed in the precise $o(z^{2})$ form required later for coefficient comparison.
+
+\subsection{Scaling to \msec{\ensuremath{\sin(\pi z)/(\pi z)}}{sin(pi z)/(pi z)}}
+
+Substituting $z \mapsto \pi z$ yields the expansion for the function used in the final comparison. Since multiplication by $\pi$ is continuous and $o(z^{2})$ is stable under composition with continuous linear maps, we obtain
+\[
+\frac{\sin(\pi z)}{\pi z}
+=
+1 - \frac{\pi^{2}}{6} z^{2} + o(z^{2})
+\qquad (z \to 0).
+\]
+This produces the quadratic expansion of $\sinDivPiZZero$ appearing in Euler’s product formula. In the Lean development, the packaged statement is provided by \codepath{EulerBasel/CoefficientSineSide.lean} and imported directly into the comparison layer.
+
+\subsection{Output for the comparison step}
+
+The sine-side analysis establishes
+\[
+\sinDivPiZZero(z)
+=
+1 - \frac{\pi^{2}}{6} z^{2} + o(z^{2})
+\qquad (z \to 0).
+\]
+In the template form $\sinDivPiZZero(z) = 1 - A z^{2} + o(z^{2})$, this identifies $A = \pi^{2}/6$. Together with the product-side expansion
+\[
+\sinDivPiZZero(z)
+=
+1 - \baselSum\, z^{2} + o(z^{2})
+\qquad (z \to 0),
+\]
+the quadratic coefficient uniqueness lemma yields $\baselSum = \pi^{2}/6$.
+
+\subsection{File map}
+
+The cubic control of $\sin z$ is developed in \codepath{EulerBasel/SinCubic.lean}.  
+The normalization and $0$-patched quadratic remainder for $\sin z / z$ appear in \codepath{EulerBasel/SinDivZExpansion.lean}.  
+The final sine-side quadratic expansion for \sinDivPiZZero\ is provided in \codepath{EulerBasel/CoefficientSineSide.lean} and used in \codepath{EulerBasel/CoefficientComparison.lean}.
+
+\section{\msec{Product-side expansion, Phase 2C: dominated convergence and the log-derivative asymptotic}{Product-side expansion, Phase 2C: dominated convergence and the log-derivative asymptotic}}
+
+This section presents the core analytic step of the product-side argument, proved in Phase~2C, which provides the rigorous mechanism for extracting the quadratic coefficient \baselSum{} from the Euler product. Conceptually, the argument follows the classical product-over-zeros perspective for \(\sin(\pi z)\), but replaces Euler’s informal coefficient extraction by a punctured-neighbourhood asymptotic derived from a logarithmic derivative identity together with a justified interchange of limit and infinite sum \cite{WeierstrassProductNotesToronto}.
+
+The objective is to prove the punctured asymptotic
+\[
+\logDeriv(\eulerLimitFun)(z)
+=
+-2\,\baselSum\, z
++ o(z)
+\quad
+\text{as } z \to 0 \text{ within } \nhdsPunct{0}.
+\]
+As discussed earlier, this statement is the rigorous substitute for Euler’s formal extraction of the \(z^{2}\) coefficient from an infinite product. It is the essential input for the subsequent quadratic reconstruction.
+
+\subsection{Step 1: reduction of \texorpdfstring{$\mathrm{IsLittleO}$}{IsLittleO} to a limit}
+
+To establish an \(o(z)\) statement, we use the standard characterization of \texttt{IsLittleO} in terms of a quotient limit. Define
+\[
+q(z)
+:=
+\frac{\logDeriv(\eulerLimitFun)(z) + 2\,\baselSum\, z}{z}.
+\]
+It suffices to prove
+\[
+q(z) \to 0
+\quad
+\text{as } z \to 0 \text{ within } \nhdsPunct{0}.
+\]
+The denominator is eventually nonzero on the punctured filter, so the quotient is well-defined there.
+
+\subsection{Step 2: rewriting as a \texorpdfstring{\texttt{tsum}}{tsum}}
+
+On a fixed punctured neighbourhood, the logarithmic derivative admits the expansion
+\[
+\logDeriv(\eulerLimitFun)(z)
+=
+\sum_{n=0}^{\infty} \mathsf{eulerRatTerm}(n,z),
+\]
+while
+\[
+\baselSum
+=
+\sum_{n=0}^{\infty} \baselTerm(n).
+\]
+We rewrite
+\[
+q(z)
+=
+\sum_{n=0}^{\infty} \mathsf{tTerm}(n,z),
+\]
+where
+\[
+\mathsf{tTerm}(n,z)
+:=
+\frac{\mathsf{eulerRatTerm}(n,z)}{z}
++
+2\,\baselTerm(n).
+\]
+
+This formulation isolates the per-term correction corresponding to Euler’s cancellation. For each fixed \(n\), the quotient \(\mathsf{eulerRatTerm}(n,z)/z\) has a finite limit as \(z \to 0\); the added term \(2\,\baselTerm(n)\) removes precisely that limiting value.
+
+\subsection{Step 3: pointwise convergence via explicit cancellation}
+
+Fix \(n\) and set \(a := (n+1)^{2}\). After simplification, the correction term has the form
+\[
+\mathsf{tTerm}(n,z)
+=
+\frac{2}{z^{2}-a}
++
+\frac{2}{a}.
+\]
+At \(z = 0\) the contributions cancel:
+\[
+\frac{2}{0-a}
++
+\frac{2}{a}
+=
+0.
+\]
+Combining into a single fraction yields
+\[
+\mathsf{tTerm}(n,z)
+=
+\frac{2 z^{2}}{a(z^{2}-a)},
+\]
+which converges to \(0\) as \(z \to 0\) within the punctured neighbourhood. Thus
+\[
+\mathsf{tTerm}(n,z) \to 0
+\quad
+\text{for each fixed } n.
+\]
+
+\subsection{Step 4: uniform domination}
+
+To interchange limit and infinite sum, we establish a uniform domination bound on a fixed punctured neighbourhood:
+\[
+\lVert \mathsf{tTerm}(n,z) \rVert
+\le
+b_{R}(n),
+\]
+where \(b_{R}(n)\) is summable and independent of \(z\). The bound is obtained by estimating the rational expression above and comparing it to a fixed multiple of \(\lVert \baselTerm(n) \rVert\). Summability follows from the convergence of the Basel series.
+
+\subsection{Step 5: dominated convergence for infinite sums}
+
+With pointwise convergence and uniform domination in place, a dominated convergence theorem for infinite sums applies. We obtain
+\[
+\sum_{n=0}^{\infty} \mathsf{tTerm}(n,z)
+\to
+0
+\quad
+\text{as } z \to 0 \text{ within } \nhdsPunct{0}.
+\]
+Equivalently,
+\[
+q(z) \to 0.
+\]
+
+\subsection{Step 6: conclusion of the \texorpdfstring{$o(z)$}{o(z)} asymptotic}
+
+By the quotient characterization of \(\mathrm{IsLittleO}\), the convergence of \(q(z)\) implies
+\[
+\logDeriv(\eulerLimitFun)(z)
+=
+-2\,\baselSum\, z
++
+o(z)
+\quad
+\text{as } z \to 0 \text{ within } \nhdsPunct{0}.
+\]
+
+\subsection{Interpretation}
+
+Euler formally extracted the coefficient of \(z^{2}\) by expanding an infinite product. The present argument extracts the same coefficient by performing a termwise cancellation inside an infinite sum, justified by dominated convergence. The proof assistant forces the neighbourhood of validity to be specified and the summable domination bound to be exhibited explicitly.
+
+This punctured asymptotic is the precise analytic input required by the weighted segment integral reconstruction, which then yields the quadratic expansion
+\[
+\sinDivPiZZero(z)
+=
+1
+-
+\baselSum\, z^{2}
++
+o(z^{2}).
+\]
+
+\subsection{File map}
+
+The dominated convergence argument is implemented in
+\codepath{EulerBasel/CoefficientProductSide_Phase2C.lean}.  
+The \texttt{tsum} representation of the log-derivative and the correction family are developed in
+\codepath{EulerBasel/CoefficientEulerRationalTsum.lean}, building on
+\codepath{EulerBasel/CoefficientEulerSumForm.lean} and
+\codepath{EulerBasel/CoefficientEulerSumLimit.lean}.  
+The domination bounds are proved in \codepath{EulerBasel/EulerRationalBounds.lean}.  
+The subsequent quadratic reconstruction is packaged in
+\codepath{EulerBasel/CoefficientProductSide_QuadraticBridge.lean},
+which depends on the weighted segment integral and quadratic reconstruction layers.
+
+\section{Quadratic coefficient uniqueness and the final coefficient comparison}
+
+This section completes the argument by converting the two quadratic expansions of \sinDivPiZZero{} into the Basel identity. Once both sides are expressed in a common asymptotic template, equality of coefficients follows from a general uniqueness lemma. This isolates the abstract comparison step underlying Euler’s method.
+
+\subsection{The shared asymptotic template}
+
+From the sine-side analysis we have
+\[
+\sinDivPiZZero(z)
+=
+1 - \frac{\pi^{2}}{6}\, z^{2} + o(z^{2})
+\quad
+\text{as } z \to 0.
+\]
+From the product-side analysis, via the quadratic bridge built on the weighted segment integral reconstruction, we have
+\[
+\sinDivPiZZero(z)
+=
+1 - \baselSum\, z^{2} + o(z^{2})
+\quad
+\text{as } z \to 0.
+\]
+Both expansions share the same structure: constant term \(1\), quadratic term, and error of order \(o(z^{2})\). The remaining task is therefore purely abstract: a function cannot admit two distinct quadratic coefficients in such an expansion.
+
+\subsection{The uniqueness lemma}
+
+The uniqueness lemma is stated for a function \(f : \C \to \C\). If
+\[
+f(z) = 1 - a z^{2} + o(z^{2})
+\quad
+\text{and}
+\quad
+f(z) = 1 - b z^{2} + o(z^{2})
+\quad
+\text{as } z \to 0,
+\]
+then \(a = b\).
+
+Subtracting the two expansions yields
+\[
+(a-b) z^{2} = o(z^{2}).
+\]
+Dividing by \(z^{2}\) on the punctured neighbourhood and passing to the limit forces \(a-b = 0\). The removable singularity at \(z=0\) is handled as in earlier sections: division is interpreted on \(\nhdsPunct{0}\), and the limit statement is upgraded to the full neighbourhood.
+
+In the formal development this lemma is proved abstractly in \codepath{EulerBasel/QuadraticCoefficient.lean}. It depends only on basic asymptotic reasoning and is independent of the specific structure of \sinDivPiZZero{} or Euler products.
+
+\subsection{Application to \sinDivPiZZero}
+
+Applying the lemma with \(f = \sinDivPiZZero\) and coefficients
+\[
+a = \baselSum,
+\qquad
+b = \frac{((\pi : \mathbb{R}) : \mathbb{C})^{2}}{6},
+\]
+we conclude
+\[
+\baselSum = \frac{((\pi : \mathbb{R}) : \mathbb{C})^{2}}{6}.
+\]
+All analytic content of the proof lies in establishing the two expansions; the final comparison is short and structurally transparent.
+
+\subsection{Real-valued corollary}
+
+The formal definition
+\[
+\baselSum
+=
+\sum_{n=0}^{\infty} \frac{1}{(n+1)^{2}}
+\]
+is converted by reindexing into the classical real statement
+\[
+\sum_{n=1}^{\infty} \frac{1}{n^{2}}
+=
+\frac{\pi^{2}}{6}.
+\]
+The coefficient comparison is implemented in \codepath{EulerBasel/CoefficientComparison.lean}, and the real-valued identity is stated in \codepath{EulerBasel/BaselEuler.lean}.
+
+\subsection{Structural role in the argument}
+
+Euler’s original method is fundamentally a coefficient comparison. The uniqueness lemma isolates this logic into a reusable component. Once the sine-side and product-side expansions are established, the conclusion follows formally from the asymptotic template.
+
+This separation enhances modularity and auditability. The analytic work is confined to establishing the expansions, while the comparison step is abstract and independent of their origin. The proof therefore concludes not by invoking a pre-existing evaluation of \(\zeta(2)\), but by executing the same structural comparison that underlies Euler’s argument, now supported by modern asymptotic rigor.
+
+\subsection{File map}
+
+The quadratic coefficient uniqueness lemma appears in
+\codepath{EulerBasel/QuadraticCoefficient.lean}.  
+The sine-side and product-side expansions are provided by
+\codepath{EulerBasel/CoefficientSineSide.lean} and
+\codepath{EulerBasel/CoefficientProductSide.lean}.  
+The final comparison and the complex identity
+\(\baselSum = \pi^{2}/6\) are proved in
+\codepath{EulerBasel/CoefficientComparison.lean}, and the classical real Basel identity is stated in
+\codepath{EulerBasel/BaselEuler.lean}.
+
+\section{Implementation overview and repository map}
+
+This section provides an overview of the Lean implementation, emphasizing modularity and auditability. The development is organized so that each conceptual step of the Euler-faithful argument corresponds to a clearly delimited group of files with well-defined interfaces. The final theorem results from combining two independently established quadratic expansions and applying a single abstract uniqueness lemma.
+
+\subsection{High-level structure}
+
+The project divides into three largely independent strands:
+
+\begin{itemize}[leftmargin=2em]
+  \item \textbf{Sine-side:}
+  \texttt{SinCubic}
+  \(\to\)
+  \texttt{SinDivZExpansion}
+  \(\to\)
+  \texttt{CoefficientSineSide}
+
+  \item \textbf{Product-side:}
+  \texttt{EulerProductExpansion}
+  \(\to\)
+  log-derivative decomposition
+  \(\to\)
+  Phase~2C
+  \(\to\)
+  quadratic bridge
+  \(\to\)
+  \texttt{CoefficientProductSide}
+
+  \item \textbf{Comparison:}
+  \texttt{QuadraticCoefficient}
+  \(\to\)
+  \texttt{CoefficientComparison}
+\end{itemize}
+
+The strands interact only through a small number of exported asymptotic theorems. This separation ensures that the final comparison layer is short and that each analytic component can be audited independently.
+
+\subsection{Core definitions}
+
+\texttt{EulerBasel/CoefficientDefs.lean} defines the central objects:
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{baselTerm} and \texttt{baselSum},
+  \item \sinDivPiZZero\ and related normalized functions,
+  \item auxiliary definitions used in the log-derivative analysis.
+\end{itemize}
+
+This file serves as the notational interface between mathematical statements and Lean definitions.
+
+\subsection{Sine-side implementation}
+
+The sine-side development is compact and self-contained.
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{EulerBasel/SinCubic.lean} proves the punctured-neighbourhood cubic expansion of \(\sin z\), expressed as a limit for \((\sin z - z)/z^{3}\), using dominated convergence on the defining series.
+
+  \item \texttt{EulerBasel/SinDivZExpansion.lean} derives the quadratic expansion of \(\sin z / z\) near \(0\), introducing a $0$-patched remainder so that the result is stated cleanly as a little-\(o(z^{2})\) theorem on \(\nhds 0\).
+
+  \item \texttt{EulerBasel/CoefficientSineSide.lean} performs the scaling \(z \mapsto \pi z\) and exports the final sine-side expansion
+  \[
+  \sinDivPiZZero(z)
+  =
+  1 - \frac{\pi^{2}}{6}\, z^{2}
+  + o(z^{2}).
+  \]
+\end{itemize}
+
+\subsection{Product-side implementation}
+
+The product-side development is layered, reflecting the analytic structure of the argument.
+
+\subsubsection{Euler product and limit function}
+
+\texttt{EulerBasel/EulerProductExpansion.lean}
+constructs finite Euler products and proves convergence to the normalized sine function on the relevant domain.
+
+\codepath{EulerBasel/EulerLimitFunEqSine.lean}
+identifies \leanid{eulerLimitFun} with \sinDivPiZZero, allowing product-side and sine-side formulations to be interchanged.
+
+\subsubsection{Log-derivative decomposition}
+
+\codepath{EulerBasel/CoefficientEulerLogDeriv.lean} and
+\codepath{EulerBasel/CoefficientEulerSumForm.lean}
+develop the passage from products to sums via the logarithmic derivative.
+
+\codepath{EulerBasel/CoefficientEulerSumLimit.lean} and
+\codepath{EulerBasel/CoefficientEulerRationalTsum.lean}
+establish the summability and the \texttt{tsum} identity
+\[
+\logDeriv(\eulerLimitFun)(z)
+=
+\sum_{n=0}^{\infty} \mathsf{eulerRatTerm}(n,z)
+\]
+on a fixed punctured neighbourhood.
+
+\subsubsection{Bounds and neighbourhood infrastructure}
+
+\texttt{EulerBasel/EulerRationalBounds.lean}
+provides quantitative bounds for the rational terms sufficient to construct a summable domination sequence independent of \(z\).
+
+\texttt{EulerBasel/TopologyPunctured.lean}
+contains reusable lemmas about punctured neighbourhoods, including eventual non-vanishing results needed when dividing by \(z\).
+
+\texttt{EulerBasel/CoefficientEulerLicensing.lean}
+packages explicit hypotheses ensuring that rewriting steps remain stable and do not rely on fragile automation.
+
+\subsubsection{Phase 2C: dominated convergence}
+
+\codepath{EulerBasel/CoefficientProductSide_Phase2C.lean}
+proves the punctured-neighbourhood asymptotic
+\[
+\logDeriv(\eulerLimitFun)(z)
+=
+-2\,\baselSum\, z
++ o(z)
+\quad
+\text{as } z \to 0 \text{ within } \nhdsPunct{0}.
+\]
+This file defines the per-term correction family, establishes pointwise cancellation, proves uniform summable domination, and applies dominated convergence for infinite sums.
+
+\subsubsection{Quadratic reconstruction bridge}
+
+The transition from the log-derivative asymptotic to the quadratic expansion is handled in two layers:
+
+\begin{itemize}[leftmargin=2em]
+  \item \codepath{EulerBasel/CoefficientProductSide_QuadraticBridge.lean}, which exports the reconstruction step.
+  \item \codepath{EulerBasel/WeightedSegmentIntegral.lean} and
+        \codepath{EulerBasel/QuadraticReconstruction.lean}, which implement the weighted segment integral argument used to integrate the log-derivative asymptotic.
+\end{itemize}
+
+\codepath{EulerBasel/CoefficientProductSide.lean} then exports the final product-side expansion
+\[
+\sinDivPiZZero(z)
+=
+1 - \baselSum\, z^{2}
++ o(z^{2}).
+\]
+
+\subsection{Coefficient comparison and assembly}
+
+\texttt{EulerBasel/QuadraticCoefficient.lean}
+proves the abstract uniqueness lemma.
+
+\texttt{EulerBasel/CoefficientComparison.lean}
+imports the sine-side and product-side expansions and concludes
+\[
+\baselSum
+=
+\frac{\pi^{2}}{6}.
+\]
+
+\texttt{EulerBasel/BaselEuler.lean}
+packages the classical real Basel identity.
+
+\subsection{Audit strategy}
+
+Auditing follows the three-strand structure:
+
+\paragraph{Sine-side chain.}
+\texttt{SinCubic}
+\(\to\)
+\texttt{SinDivZExpansion}
+\(\to\)
+\texttt{CoefficientSineSide}.
+
+\paragraph{Product-side chain.}
+Euler product identification
+\(\to\)
+log-derivative \texttt{tsum} decomposition
+\(\to\)
+Phase~2C dominated convergence
+\(\to\)
+weighted segment reconstruction
+\(\to\)
+product-side quadratic expansion.
+
+\paragraph{Final comparison.}
+\codepath{QuadraticCoefficient.lean}
+and its application in
+\codepath{CoefficientComparison.lean}.
+
+Because each strand exports only a small number of interface theorems, verification reduces to checking these interfaces and then examining internal proofs within each strand.
+
+\subsection{Building the project}
+
+The project builds with \texttt{lake build}. The final theorem can be accessed by importing
+\texttt{EulerBasel.BaselEuler}.
+
+\subsection{Selected Lean statements}
+
+To make the interface between the mathematical exposition and the formal development concrete, we include two representative Lean declarations. The first is the abstract quadratic uniqueness lemma used in the final comparison. The second is the final theorem identifying the Basel value.
+
+\begin{Verbatim}[fontsize=\small, frame=single]
+theorem quadratic_coeff_unique
+  (f : Complex -> Complex) (a b : Complex)
+  (ha :
+    (fun z : Complex => f z - (1 - a * z ^ 2))
+      =o[nhds (0 : Complex)]
+        (fun z : Complex => z ^ 2))
+  (hb :
+    (fun z : Complex => f z - (1 - b * z ^ 2))
+      =o[nhds (0 : Complex)]
+        (fun z : Complex => z ^ 2)) :
+  a = b
+\end{Verbatim}
+
+\begin{Verbatim}[fontsize=\small, frame=single]
+theorem baselSum_eq_pi_sq_div_six :
+  baselSum = (Real.pi ^ 2) / 6
+\end{Verbatim}
+
+These declarations illustrate the final interface theorems exported by the development. All analytic work is encapsulated in earlier layers; the comparison stage imports and applies these results exactly as stated.
+
+\section{Historical fidelity and modern rigor: what changed, and what did not}
+
+This section clarifies the relationship between the formal proof and Euler’s 1735 argument, distinguishing the preserved global structure from the analytic mechanisms required to meet modern standards of rigor \cite{EulerE041}.
+
+\subsection{Preserved structure: the global Eulerian framework}
+
+The formal proof retains the overall architecture of Euler’s method.
+
+\paragraph{\msec{Working with \ensuremath{\sin(\pi z)} and its zeros}{Working with sin(pi z) and its zeros}.}
+Euler begins from the observation that \(\sin(\pi z)\) vanishes at each integer and treats the function as determined by its zeros \cite{EulerE041}. The formal development adopts the same perspective. The normalized function
+\[
+\sinDivPiZZero(z)
+=
+\frac{\sin(\pi z)}{\pi z}
+\]
+is used so that the nonzero integers remain the roots, while the removable singularity at \(0\) is handled explicitly.
+
+\paragraph{Coefficient comparison at the origin.}
+Euler’s decisive step is a comparison of coefficients near \(z=0\). The formal proof concludes with the same comparison. Both the sine side and the product side are brought into the common asymptotic form
+\[
+\sinDivPiZZero(z)
+=
+1 - A z^{2} + o(z^{2}),
+\]
+and the identity follows by identifying the quadratic coefficient.
+
+\paragraph{Quadratic coefficient from root contributions.}
+In Euler’s reasoning, the quadratic coefficient arises from summing contributions associated with the roots of the product. The formal development preserves this viewpoint. The coefficient \baselSum{} appears explicitly as the series \(\sum 1/(n+1)^{2}\), emerging from the additive structure revealed by the logarithmic derivative.
+
+The proof therefore concludes at the same structural point as Euler’s: a comparison of quadratic coefficients for a normalized sine function.
+
+\subsection{Modern analytic mechanisms}
+
+What differs is the local analytic justification.
+
+Euler treated infinite products and termwise manipulations heuristically. In the formal setting, these steps are replaced by explicit theorems: convergence of finite Euler products to a limit function, control of its logarithmic derivative on a punctured neighbourhood, a dominated convergence argument to justify interchange of limit and infinite sum, and systematic handling of removable singularities at \(0\).
+
+These analytic components do not alter the global strategy. They make explicit the commitments that remain implicit in the eighteenth-century argument.
+
+\subsection{Faithfulness in context}
+
+The development does not shift to Fourier series, Parseval identities, contour integration, or special-function evaluations of \(\zeta(2)\). It remains within the product-over-zeros and coefficient-comparison framework introduced by Euler, introducing only the analytic tools required to render that framework rigorous.
+
+In this sense, the formalization demonstrates that Euler’s original strategy can serve as a direct structural template for a fully rigorous proof once expressed in modern analytic language.
+
+\section{Uniqueness and related formalizations}
+
+The Basel identity has been formalized in several proof assistants. The relevant question is therefore not whether the value \(\pi^{2}/6\) appears elsewhere, but whether Euler’s specific product-over-zeros coefficient-comparison route has been mechanized in a closely corresponding analytic form.
+
+\subsection{Common formalization routes}
+
+Most formal proofs of the Basel identity proceed via modern analytic techniques, including:
+
+\begin{itemize}[leftmargin=2em]
+  \item Fourier analysis and Parseval-type arguments,
+  \item contour integration or residue calculus,
+  \item special-function approaches involving \(\zeta(s)\), \(\Gamma\), or Bernoulli polynomials,
+  \item evaluation of \(\sum 1/n^{2}\) through previously developed library infrastructure.
+\end{itemize}
+
+These approaches are mathematically natural and well suited to mature analysis libraries. They do not, however, reconstruct Euler’s original product-and-coefficient argument in its structural form.
+
+\subsection{Comparison with Isabelle/HOL}
+
+Isabelle/HOL contains a formal proof of the Basel identity within its analysis library, notably in the theory \texttt{Gamma\_Function} \cite{IsabelleHOLAnalysisGammaFunction}. That development establishes a Weierstrass-style product formula for \(\sin(\pi x)/(\pi x)\) and proceeds via classical uniform convergence arguments.
+
+Morris~\cite{Morris2023} presents a reconstruction of Euler’s reasoning in Isabelle using nonstandard analysis and hyperpolynomial methods to interpret Euler’s infinitesimal arguments.
+
+Both approaches are rigorous and substantial. Their analytic cores, however, differ structurally from the present Lean formalization. The Isabelle development emphasizes uniform convergence of products, and Morris’s work employs nonstandard analytic frameworks. The Lean development presented here instead isolates Euler’s “sum of root contributions” step through:
+
+\begin{itemize}[leftmargin=2em]
+  \item a punctured-neighbourhood log-derivative linear asymptotic,
+  \item justified by dominated convergence for an infinite \texttt{tsum},
+  \item followed by an explicit reconstruction to a quadratic expansion,
+  \item and concluded by an abstract quadratic coefficient uniqueness lemma.
+\end{itemize}
+
+\subsection{Other proof assistants}
+
+Formal proofs of the Basel identity also appear in Mizar \cite{MizarBasel232}, Metamath \cite{MetamathBasel}, Coq/Rocq \cite{CoqtailMathZeta2}, and within Lean’s mathlib via Bernoulli polynomial methods \cite{MathlibZetaValues}. In each case, the identity is established using standard analytic infrastructure rather than a direct reconstruction of Euler’s product-and-coefficient strategy.
+
+\subsection{Scope of the claim}
+
+To the best of our knowledge, and based on publicly available repositories and documentation as of February 2026, this is the first publicly available Lean~4 formalization of the Basel identity that follows Euler’s product-over-zeros coefficient comparison and implements the product-side coefficient extraction via a punctured-neighbourhood log-derivative asymptotic justified by dominated convergence for infinite sums, followed by an explicit quadratic reconstruction.
+
+This claim is restricted to Lean~4 and to the specific analytic architecture described above. No assertion is made regarding uniqueness across all proof assistants or unpublished developments.
+
+In that carefully scoped sense, the present development appears to be the closest Lean~4 mechanization to Euler’s original 1735 structural route.
+
+\section{Acknowledgements and tooling notes}
+
+This section records the principal external dependencies and tooling assumptions underlying the development. The aim is to facilitate reproducibility and to acknowledge the ecosystem that enables this formalization.
+
+\subsection{Lean, mathlib, and analytic infrastructure}
+
+The formalization is written in Lean~4 and relies extensively on mathlib’s analysis library. In particular, it uses:
+
+\begin{itemize}[leftmargin=2em]
+  \item filter-based topology and limits (neighbourhood filters, punctured neighbourhoods, and \texttt{Tendsto}),
+  \item infinite sums and summability (\texttt{tsum}, \texttt{Summable}, and associated lemmas),
+  \item asymptotic notation (\(\mathrm{IsLittleO}\) and related results in \texttt{Analysis/Asymptotics}),
+  \item dominated convergence for series, used to justify passing limits through infinite sums,
+  \item standard complex analysis and calculus infrastructure for \(\sin\), derivatives, and local continuity arguments.
+\end{itemize}
+
+Although the proof follows an Euler-faithful structural route, its formal realization depends on this modern analytic framework. The clarity and modularity of the development reflect the maturity of the underlying library.
+
+\subsection{Engineering structure}
+
+Several engineering choices were made to maintain robustness and clarity.
+
+\begin{itemize}[leftmargin=2em]
+  \item Punctured-neighbourhood infrastructure is isolated in \codepath{EulerBasel/TopologyPunctured.lean}, rather than reintroduced locally in individual proofs.
+
+  \item Removable singularities are handled systematically: statements are first established on \(\nhdsPunct{0}\), where division is legitimate, and then upgraded to \(\nhds 0\) via punctured-limit lemmas or $0$-patched remainders.
+
+  \item Explicit licensing lemmas are used where necessary to avoid fragile automation. Hypotheses such as \(z \in\) \texttt{nearZeroPunctured} are made explicit so that rewriting steps remain stable under library evolution.
+
+  \item The analytically delicate component, Phase~2C, is confined to a small number of tightly scoped files, making the location of the most substantial analytic reasoning transparent.
+\end{itemize}
+
+\subsection{Toolchain and reproducibility}
+
+The repository builds with the standard Lean toolchain using the command
+\texttt{lake build}. The project relies only on standard mathlib components and introduces no new axioms.
+
+The intended entry point is
+\texttt{import EulerBasel},
+which imports the final assembly module together with the sine-side expansion, product-side expansion, and coefficient comparison layer.
+
+The Lean toolchain and mathlib revision are pinned in the project configuration to ensure reproducible builds. The repository includes a minimal verification script,
+\codepath{scripts/release-build.ps1},
+which invokes the pinned toolchain, prints version information, runs
+\texttt{lake build}, and halts on failure. Equivalent verification can be performed manually by installing the specified toolchain and running
+\texttt{lake build} from the repository root. Full instructions are provided in the \texttt{README}.
+
+\subsection{Reusability}
+
+The abstract quadratic coefficient uniqueness lemma is independent of the Basel identity and can be reused for other coefficient-comparison arguments. The overall architecture also extends naturally to higher-order expansions.
+
+For example, Euler-style evaluations of \(\zeta(2k)\) would require higher-order control of both the sine-side expansion and the product-side reconstruction. The present development isolates the quadratic case as the minimal instance of this method while preserving the structural components required for generalization.
+
+\subsection{Acknowledgements}
+
+This project relies fundamentally on the Lean community and the mathlib maintainers, whose contributions to analysis, topology, and complex function theory make historically structured analytic formalization feasible. The author also thanks readers who provided feedback on earlier drafts of the exposition, helping clarify the presentation and sharpen the relationship between Euler’s original reasoning and its formal reconstruction.
+
+\subsection{Core analytic files}
+
+The punctured-neighbourhood log-derivative asymptotic proved via dominated convergence appears in
+\codepath{EulerBasel/CoefficientProductSide_Phase2C.lean}.  
+
+The reconstruction of this asymptotic into a quadratic expansion is handled in
+\codepath{EulerBasel/CoefficientProductSide_QuadraticBridge.lean},
+together with the weighted segment integral layer
+(\codepath{EulerBasel/WeightedSegmentIntegral.lean} and
+\codepath{EulerBasel/QuadraticReconstruction.lean}).  
+
+The final coefficient comparison is implemented in
+\codepath{EulerBasel/CoefficientComparison.lean}.
+
+\section{Conclusion and future work}
+
+We have presented a fully formal Lean~4 proof of the Basel identity
+\[
+\sum_{n=1}^{\infty}\frac{1}{n^{2}}=\frac{\pi^{2}}{6}
+\]
+that follows Euler’s product-over-zeros coefficient-comparison strategy at the level of proof architecture. The development centers on the normalized function \(\sin(\pi z)/(\pi z)\) and two independently derived quadratic expansions at the origin.
+
+The sine-side expansion is obtained from local control of \(\sin z\) near \(0\). The product-side expansion replaces Euler’s informal extraction of the quadratic coefficient from an infinite product with a punctured-neighbourhood log-derivative asymptotic. This asymptotic is established via a dominated convergence argument that justifies the intended termwise cancellation, and is then converted into a quadratic expansion through a weighted segment integral reconstruction. The final identification of coefficients is a short application of an abstract quadratic uniqueness lemma.
+
+Beyond the specific evaluation of \(\zeta(2)\), the project provides a structured case study in formalizing an Euler-style coefficient comparison. The central analytic pattern—passing from a product to a sum via a logarithmic derivative, extracting low-order information from a punctured limit using dominated convergence, and reconstructing a polynomial expansion—appears in many areas of classical analysis and analytic number theory. The development isolates this pattern into explicit interface theorems, supporting independent audit and potential reuse.
+
+\subsection{Future directions}
+
+Two extensions are natural.
+
+First, several punctured-neighbourhood and removable-singularity patterns used here could be generalized within mathlib. In particular, systematic lemmas for upgrading asymptotic statements from \(\nhdsPunct{0}\) to \(\nhds 0\) once removability is established would streamline similar developments.
+
+Second, the dominated convergence template used in Phase~2C—termwise convergence together with a uniform summable domination on a neighbourhood implying convergence of a \texttt{tsum}—could be abstracted into a reusable wrapper aligned with existing mathlib conventions. Such an abstraction would clarify the structure of comparable arguments elsewhere.
+
+More broadly, the same architectural approach may extend to higher-order coefficient comparisons, including Euler-style evaluations of \(\zeta(2k)\), once the corresponding higher-order expansions are formalized.
+
+\subsection{Closing perspective}
+
+Euler’s original argument is compelling because its structural idea is simple: express \(\sin(\pi z)\) in terms of its zeros and compare coefficients at the origin. The present formalization shows that this structure can be preserved while supplying the analytic detail required by modern standards of rigor. The resulting proof is faithful to Euler’s global strategy and explicit in its local analytic justification.
+
+\clearpage
+\section{Appendix: theorem table (file map to exported results)}
+\label{sec:theorem-table}
+
+This appendix lists the principal exported Lean theorems corresponding to the
+logical interfaces between the main layers of the development.
+Internal lemmas are omitted; only the results consumed by subsequent files
+are recorded here.
+
+\subsection*{\codepath{EulerBasel/EulerLimitFunEqSine.lean}}
+
+Identifies the Euler-product limit function with the normalized sine function
+on a punctured neighbourhood of \(0\).
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{eulerLimitFun\_eq\_sinDivPiZ0\_of\_mem\_nearZeroPunctured}
+\end{itemize}
+
+
+\subsection*{\codepath{EulerBasel/CoefficientSineSide.lean}}
+
+Exports the sine-side quadratic expansion
+\[
+\sinDivPiZZero(z)
+=
+1 - \frac{\pi^{2}}{6} z^{2}
++ o(z^{2}).
+\]
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{sinDivPiZ0\_sub\_quadratic\_isLittleO}
+\end{itemize}
+
+
+\subsection*{\codepath{EulerBasel/CoefficientProductSide\_Phase2C.lean}}
+
+Establishes the punctured-neighbourhood asymptotic
+\[
+\logDeriv(\eulerLimitFun)(z)
+=
+-2\,\baselSum\, z
++ o(z),
+\]
+which serves as the rigorous substitute for Euler’s coefficient extraction
+from the infinite product.
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{logDeriv\_eulerLimitFun\_add\_two\_baselSum\_mul\_isLittleO\_punctured}
+\end{itemize}
+
+
+\subsection*{\codepath{EulerBasel/CoefficientProductSide_QuadraticBridge.lean}}
+
+Packages the reconstruction step from the log-derivative asymptotic to
+the quadratic expansion of the normalized product-side expression.
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{tendsto\_eulerLimitFun0\_sub\_one\_sub\_baselSum\_div}
+  \item \texttt{eulerLimitFun0\_sub\_one\_sub\_baselSum\_isLittleO}
+\end{itemize}
+
+
+\subsection*{\codepath{EulerBasel/CoefficientProductSide.lean}}
+
+Exports the product-side quadratic expansion
+\[
+\sinDivPiZZero(z)
+=
+1 - \baselSum\, z^{2}
++ o(z^{2}).
+\]
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{sinDivPiZ0\_sub\_one\_sub\_baselSum\_isLittleO\_of\_eulerLimitFun0}
+  \item \texttt{sinDivPiZ0\_sub\_one\_sub\_baselSum\_isLittleO}
+\end{itemize}
+
+
+\subsection*{\codepath{EulerBasel/QuadraticCoefficient.lean}}
+
+Provides the abstract uniqueness lemma for quadratic coefficients in
+asymptotic expansions.
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{quadratic\_coeff\_unique}
+\end{itemize}
+
+
+\subsection*{\codepath{EulerBasel/CoefficientComparison.lean}}
+
+Performs the final coefficient comparison, establishing
+\[
+\baselSum = \frac{((\pi : \mathbb{R}) : \mathbb{C})^{2}}{6}.
+\]
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{baselSum\_eq\_pi\_sq\_div\_six}
+\end{itemize}
+
+\printbibliography
+\end{document}
+
