@@ -1,0 +1,19 @@
+# Lean / Lake
+/.lake/
+/.build/
+/build/
+/lake-packages/
+/lake-manifest.json
+
+# Compiled Lean artifacts
+*.olean
+*.ilean
+*.trace
+
+# Temp / logs
+*.tmp
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
