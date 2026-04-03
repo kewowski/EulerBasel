@@ -45,14 +45,12 @@ theorem eventually_hint_derivH_mul_z
   --------------------------------------------------------------------
 
   have hHbd : ∀ᶠ w : ℂ in 𝓝[≠] (0 : ℂ), ‖H (b := b) (F := F) w‖ ≤ (2 : ℝ) := by
-    have hball : Metric.ball (1 : ℂ) (1 : ℝ) ∈ 𝓝 (1 : ℂ) := by
-      exact Metric.ball_mem_nhds (1 : ℂ) (by norm_num : (0 : ℝ) < (1 : ℝ))
+    have hdist : ∀ᶠ y : ℂ in 𝓝 (1 : ℂ), ‖y - (1 : ℂ)‖ < (1 : ℝ) := by
+      filter_upwards [Metric.ball_mem_nhds (x := (1 : ℂ)) (by norm_num : (0 : ℝ) < (1 : ℝ))] with y hy
+      simpa [Metric.mem_ball, dist_eq_norm] using hy
     have hle : ∀ᶠ y : ℂ in 𝓝 (1 : ℂ), ‖y‖ ≤ (2 : ℝ) := by
-      filter_upwards [hball] with y hy
-      have hy' : ‖y - (1 : ℂ)‖ ≤ (1 : ℝ) := by
-        have : ‖y - (1 : ℂ)‖ < (1 : ℝ) := by
-          simpa [Metric.mem_ball, dist_eq_norm] using hy
-        exact le_of_lt this
+      filter_upwards [hdist] with y hy
+      have hy' : ‖y - (1 : ℂ)‖ ≤ (1 : ℝ) := le_of_lt hy
       have : ‖y‖ ≤ ‖y - (1 : ℂ)‖ + ‖(1 : ℂ)‖ := by
         simpa [sub_eq_add_neg, add_assoc] using
           (norm_add_le (y - (1 : ℂ)) (1 : ℂ))
@@ -60,21 +58,19 @@ theorem eventually_hint_derivH_mul_z
       calc
         ‖y‖ ≤ ‖y - (1 : ℂ)‖ + ‖(1 : ℂ)‖ := this
         _   ≤ (1 : ℝ) + (1 : ℝ) := by
-          have h1le : ‖(1 : ℂ)‖ ≤ (1 : ℝ) := by
-            simp
+          have h1le : ‖(1 : ℂ)‖ ≤ (1 : ℝ) := by simp
           simpa [h1] using add_le_add hy' h1le
         _   = (2 : ℝ) := by norm_num
-    exact (hHfun.eventually hle)
+    exact hHfun.eventually hle
 
   have hrbd : ∀ᶠ w : ℂ in 𝓝[≠] (0 : ℂ), ‖r (b := b) (F := F) w‖ ≤ (1 : ℝ) := by
-    have hmem : Metric.ball (0 : ℂ) (1 : ℝ) ∈ 𝓝 (0 : ℂ) :=
-      Metric.ball_mem_nhds (0 : ℂ) (by norm_num : (0 : ℝ) < (1 : ℝ))
+    have hdist : ∀ᶠ y : ℂ in 𝓝 (0 : ℂ), ‖y‖ < (1 : ℝ) := by
+      filter_upwards [Metric.ball_mem_nhds (x := (0 : ℂ)) (by norm_num : (0 : ℝ) < (1 : ℝ))] with y hy
+      simpa [Metric.mem_ball, dist_eq_norm] using hy
     have hle : ∀ᶠ y : ℂ in 𝓝 (0 : ℂ), ‖y‖ ≤ (1 : ℝ) := by
-      filter_upwards [hmem] with y hy
-      have : ‖y‖ < (1 : ℝ) := by
-        simpa [Metric.mem_ball, dist_eq_norm] using hy
-      exact le_of_lt this
-    exact (hr.eventually hle)
+      filter_upwards [hdist] with y hy
+      exact le_of_lt hy
+    exact hr.eventually hle
 
   --------------------------------------------------------------------
   -- Pick a small ball around 0 inside the intersection set where both bounds hold.
@@ -271,7 +267,9 @@ theorem eventually_hint_derivH_mul_z
           exact mul_le_mul_of_nonneg_right hsZ_le' (by norm_num)
         have htmp0 : ((‖(↑s * z)‖ * (1 : ℝ)) * ‖z‖) ≤ ((1 : ℝ) * ‖z‖ * (1 : ℝ)) * ‖z‖ := by
           exact mul_le_mul_of_nonneg_right this hz0
-        have htmp : (2 : ℝ) * ((‖(↑s * z)‖ * (1 : ℝ)) * ‖z‖) ≤ (2 : ℝ) * (((1 : ℝ) * ‖z‖ * (1 : ℝ)) * ‖z‖) := by
+        have htmp :
+            (2 : ℝ) * ((‖(↑s * z)‖ * (1 : ℝ)) * ‖z‖) ≤
+              (2 : ℝ) * (((1 : ℝ) * ‖z‖ * (1 : ℝ)) * ‖z‖) := by
           exact mul_le_mul_of_nonneg_left htmp0 (by norm_num)
         simpa [mul_assoc] using htmp
 
