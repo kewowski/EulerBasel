@@ -45,16 +45,17 @@ theorem eventually_hint_derivH_mul_z
   --------------------------------------------------------------------
 
   have hHbd : ∀ᶠ w : ℂ in 𝓝[≠] (0 : ℂ), ‖H (b := b) (F := F) w‖ ≤ (2 : ℝ) := by
-    have hball : ∀ᶠ y : ℂ in 𝓝 (1 : ℂ), ‖y - (1 : ℂ)‖ < (1 : ℝ) := by
-      simpa [Metric.mem_ball, dist_eq_norm] using
-        (Metric.ball_mem_nhds (1 : ℂ) (by norm_num : (0 : ℝ) < (1 : ℝ)))
+    have hball : Metric.ball (1 : ℂ) (1 : ℝ) ∈ 𝓝 (1 : ℂ) := by
+      exact Metric.ball_mem_nhds (1 : ℂ) (by norm_num : (0 : ℝ) < (1 : ℝ))
     have hle : ∀ᶠ y : ℂ in 𝓝 (1 : ℂ), ‖y‖ ≤ (2 : ℝ) := by
       filter_upwards [hball] with y hy
+      have hy' : ‖y - (1 : ℂ)‖ ≤ (1 : ℝ) := by
+        have : ‖y - (1 : ℂ)‖ < (1 : ℝ) := by
+          simpa [Metric.mem_ball, dist_eq_norm] using hy
+        exact le_of_lt this
       have : ‖y‖ ≤ ‖y - (1 : ℂ)‖ + ‖(1 : ℂ)‖ := by
-        -- y = (y-1) + 1
         simpa [sub_eq_add_neg, add_assoc] using
           (norm_add_le (y - (1 : ℂ)) (1 : ℂ))
-      have hy' : ‖y - (1 : ℂ)‖ ≤ (1 : ℝ) := le_of_lt hy
       have h1 : ‖(1 : ℂ)‖ = (1 : ℝ) := by simp
       calc
         ‖y‖ ≤ ‖y - (1 : ℂ)‖ + ‖(1 : ℂ)‖ := this
@@ -88,12 +89,12 @@ theorem eventually_hint_derivH_mul_z
   rcases (mem_nhdsWithin_iff_exists_mem_nhds_inter.1 hUmem) with ⟨V, hV0, hVsub⟩
   rcases Metric.mem_nhds_iff.1 hV0 with ⟨ε, hεpos, hεsub⟩
   have hsmall : ∀ᶠ z : ℂ in 𝓝[≠] (0 : ℂ), ‖z‖ < ε := by
-    have hball0 : Metric.ball (0 : ℂ) ε ∈ 𝓝 (0 : ℂ) :=
-      Metric.ball_mem_nhds (0 : ℂ) hεpos
+    have hball0 : Metric.ball (0 : ℂ) ε ∈ 𝓝 (0 : ℂ) := by
+      exact Metric.ball_mem_nhds (0 : ℂ) hεpos
     have hnorm0 : ∀ᶠ z : ℂ in 𝓝 (0 : ℂ), ‖z‖ < ε := by
-      simpa [Metric.ball, dist_eq_norm] using hball0
-    -- push `Eventually` from `𝓝 0` down to `𝓝[≠] 0 = nhdsWithin 0 {0}ᶜ`
-    exact Filter.Eventually.filter_mono (nhdsWithin_le_nhds) hnorm0
+      filter_upwards [hball0] with z hz
+      simpa [Metric.mem_ball, dist_eq_norm] using hz
+    exact Filter.Eventually.filter_mono nhdsWithin_le_nhds hnorm0
 
   --------------------------------------------------------------------
   -- Now work pointwise in z (eventually).
@@ -112,19 +113,16 @@ theorem eventually_hint_derivH_mul_z
   have u_mble :
       MeasureTheory.AEStronglyMeasurable u
         (MeasureTheory.volume.restrict (Set.Ioc (0 : ℝ) 1)) := by
-    -- `deriv (H b F)` is measurable as a function ℂ → ℂ, hence AE-strongly measurable under any measure.
     have hder_mble : Measurable (deriv (H (b := b) (F := F))) := by
       simpa using (measurable_deriv (H (b := b) (F := F)))
     have hseg_mble : Measurable (fun s : ℝ => ((s : ℂ) * z)) := by
-      -- continuous ⇒ measurable
       exact ((Complex.continuous_ofReal).mul continuous_const).measurable
     have hcomp_mble : Measurable (fun s : ℝ => deriv (H (b := b) (F := F)) ((s : ℂ) * z)) :=
       hder_mble.comp hseg_mble
     have : MeasureTheory.AEStronglyMeasurable
         (fun s : ℝ => deriv (H (b := b) (F := F)) ((s : ℂ) * z))
         (MeasureTheory.volume.restrict (Set.Ioc (0 : ℝ) 1)) := by
-      exact (hcomp_mble.aestronglyMeasurable)
-    -- multiply by constant z
+      exact hcomp_mble.aestronglyMeasurable
     simpa [u] using this.mul_const z
 
   --------------------------------------------------------------------
@@ -148,7 +146,6 @@ theorem eventually_hint_derivH_mul_z
       simpa using
         (deriv_H_eq (b := b) (F := F) ((s : ℂ) * z) hwsz hF_at hF0_at)
 
-    -- Show (s*z) ∈ V using ‖z‖ < ε and ‖s‖ ≤ 1.
     have hs_le1 : ‖(s : ℂ)‖ ≤ (1 : ℝ) := by
       have hsge0 : (0 : ℝ) ≤ s := le_of_lt hs.1
       have : |s| ≤ (1 : ℝ) := by
@@ -157,7 +154,7 @@ theorem eventually_hint_derivH_mul_z
 
     have hmul_lt : ‖(s : ℂ) * z‖ < ε := by
       have hmul_le : ‖(s : ℂ) * z‖ ≤ ‖(s : ℂ)‖ * ‖z‖ := by
-        exact (norm_mul_le (s : ℂ) z)
+        exact norm_mul_le (s : ℂ) z
       have hsz_le : ‖(s : ℂ)‖ * ‖z‖ ≤ (1 : ℝ) * ‖z‖ := by
         exact mul_le_mul_of_nonneg_right hs_le1 (norm_nonneg z)
       have hsz_lt : ‖(s : ℂ)‖ * ‖z‖ < ε := by
@@ -181,24 +178,18 @@ theorem eventually_hint_derivH_mul_z
     have hH_here : ‖H (b := b) (F := F) ((s : ℂ) * z)‖ ≤ (2 : ℝ) := hmemU.1
     have hr_here : ‖r (b := b) (F := F) ((s : ℂ) * z)‖ ≤ (1 : ℝ) := hmemU.2
 
-    -- Rewrite u(s) in the explicit factorised form.
     have hu :
         u s =
           (H (b := b) (F := F) ((s : ℂ) * z))
             * (((s : ℂ) * z) * (r (b := b) (F := F) ((s : ℂ) * z))) * z := by
       simp [u, hder, mul_assoc]
 
-    -- Now bound norms multiplicatively.
     have hz0 : 0 ≤ ‖z‖ := norm_nonneg z
-    have hb0 :
-        0 ≤ ‖((s : ℂ) * z) * (r (b := b) (F := F) ((s : ℂ) * z))‖ := by
-      exact norm_nonneg _
 
     have hstep1 :
         ‖u s‖ ≤
           ‖H (b := b) (F := F) ((s : ℂ) * z) * (((s : ℂ) * z) * (r (b := b) (F := F) ((s : ℂ) * z)))‖
             * ‖z‖ := by
-      -- use u = (A*B)*z
       set_option linter.unnecessarySimpa false in
       simpa [hu, mul_assoc] using
         (norm_mul_le
@@ -227,7 +218,6 @@ theorem eventually_hint_derivH_mul_z
           ≤
         ‖(s : ℂ) * z‖ * ‖r (b := b) (F := F) ((s : ℂ) * z)‖ := by
       set_option linter.unnecessarySimpa false in
-      set_option linter.unnecessarySimpa false in
       simpa using
         (norm_mul_le ((s : ℂ) * z) (r (b := b) (F := F) ((s : ℂ) * z)))
 
@@ -239,22 +229,20 @@ theorem eventually_hint_derivH_mul_z
 
     have hsZ_le :
         ‖(s : ℂ) * z‖ ≤ ‖(s : ℂ)‖ * ‖z‖ := by
-      set_option linter.unnecessarySimpa false in simpa using (norm_mul_le (s : ℂ) z)
+      set_option linter.unnecessarySimpa false in
+      simpa using (norm_mul_le (s : ℂ) z)
 
     have hsZ_le' :
         ‖(s : ℂ) * z‖ ≤ (1 : ℝ) * ‖z‖ := by
       exact le_trans hsZ_le (mul_le_mul_of_nonneg_right hs_le1 (norm_nonneg z))
 
-    -- Put everything together.
     have :
         ‖u s‖ ≤ (2 : ℝ) * ‖z‖ * (1 : ℝ) * (1 : ℝ) * ‖z‖ := by
-      -- start from hstep3, then apply bounds in order
       have hA1 :
           (‖H (b := b) (F := F) ((s : ℂ) * z)‖
             * ‖((s : ℂ) * z) * (r (b := b) (F := F) ((s : ℂ) * z))‖) * ‖z‖
             ≤
           ((2 : ℝ) * (‖(s : ℂ) * z‖ * (1 : ℝ))) * ‖z‖ := by
-        -- use hH_here and hB_le'
         have hA0 : 0 ≤ ‖((s : ℂ) * z) * (r (b := b) (F := F) ((s : ℂ) * z))‖ := norm_nonneg _
         have hmul1 :
             ‖H (b := b) (F := F) ((s : ℂ) * z)‖
@@ -279,7 +267,6 @@ theorem eventually_hint_derivH_mul_z
           ((2 : ℝ) * (‖(s : ℂ) * z‖ * (1 : ℝ))) * ‖z‖
             ≤
           ((2 : ℝ) * ((1 : ℝ) * ‖z‖ * (1 : ℝ))) * ‖z‖ := by
-        -- use hsZ_le'
         have : ‖(s : ℂ) * z‖ * (1 : ℝ) ≤ ((1 : ℝ) * ‖z‖) * (1 : ℝ) := by
           exact mul_le_mul_of_nonneg_right hsZ_le' (by norm_num)
         have htmp0 : ((‖(↑s * z)‖ * (1 : ℝ)) * ‖z‖) ≤ ((1 : ℝ) * ‖z‖ * (1 : ℝ)) * ‖z‖ := by
@@ -297,6 +284,7 @@ theorem eventually_hint_derivH_mul_z
       exact le_trans (le_trans hstep3 hA1) (by simpa [hA3] using hA2)
 
     exact this
+
   --------------------------------------------------------------------
   -- Glue: measurability on Ioc + bound ⇒ IntervalIntegrable on 0..1.
   --------------------------------------------------------------------
@@ -310,4 +298,3 @@ theorem eventually_hint_derivH_mul_z
 
 end
 end EulerBasel
-

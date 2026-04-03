@@ -113,9 +113,11 @@ theorem sin_div_id_sub_quadratic_isLittleO :
     filter_upwards [self_mem_nhdsWithin] with z hz0
     have hz' : z ≠ (0 : ℂ) := by simpa using hz0
     have : ((Complex.sin z / z) - (1 - (1 / 6 : ℂ) * z ^ 2)) / (z ^ 2) = q z := by
+      have hz2 : (z ^ 2 : ℂ) ≠ 0 := pow_ne_zero 2 hz'
+      apply (div_eq_iff hz2).2
       simp [q]
       field_simp [hz']
-      ring_nf
+      ring
     simpa using this
 
   -- therefore: (patched)/(z^2) =ᶠ q on punctured

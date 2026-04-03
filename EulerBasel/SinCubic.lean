@@ -7,6 +7,7 @@ organized for a dominated-convergence proof.
 This file is intentionally *series-only*: no calculus detours.
 -/
 
+import Mathlib
 import EulerBasel.Taylor
 import Mathlib.Analysis.Normed.Group.InfiniteSum
 import Mathlib.Analysis.Normed.Group.Tannery
@@ -18,7 +19,6 @@ open scoped Topology BigOperators
 open Filter
 
 namespace EulerBasel
-
 
 /-- Tail representation used:
 `sin z - z = ∑' n, if n=0 then 0 else sinTerm z n`. -/
@@ -37,21 +37,38 @@ noncomputable def remTerm (z : ℂ) (n : ℕ) : ℂ :=
 noncomputable def dom (n : ℕ) : ℝ :=
   ‖sinTerm (1 : ℂ) n‖
 
+lemma dom_eq_inv_odd_factorial (n : ℕ) :
+    dom n = 1 / ((((2 * n + 1).factorial : ℕ) : ℝ)) := by
+  simp [dom, sinTerm]
+
 lemma summable_dom : Summable dom := by
-  have hs : Summable (sinTerm (1 : ℂ)) := (hasSum_sinTerm (1 : ℂ)).summable
-  have hs_norm : Summable (fun n : ℕ => ‖sinTerm (1 : ℂ) n‖) :=
-    (summable_norm_iff (f := sinTerm (1 : ℂ))).2 hs
-  simpa [dom] using hs_norm
+  have hmodel : Summable (fun n : ℕ => (1 : ℝ) ^ n / (n.factorial : ℝ)) := by
+    simpa using Real.summable_pow_div_factorial (1 : ℝ)
+  refine Summable.of_nonneg_of_le ?_ ?_ hmodel
+  · intro n
+    rw [dom_eq_inv_odd_factorial]
+    positivity
+  · intro n
+    rw [dom_eq_inv_odd_factorial]
+    have hfac : n.factorial ≤ (2 * n + 1).factorial := by
+      apply Nat.factorial_le
+      omega
+    have hfacR : (n.factorial : ℝ) ≤ ((((2 * n + 1).factorial : ℕ) : ℝ)) := by
+      exact_mod_cast hfac
+    have hpos : (0 : ℝ) < (n.factorial : ℝ) := by
+      exact_mod_cast Nat.factorial_pos n
+    have hinv :
+        1 / ((((2 * n + 1).factorial : ℕ) : ℝ)) ≤ 1 / (n.factorial : ℝ) := by
+      exact one_div_le_one_div_of_le hpos hfacR
+    simpa using hinv
 
 /-- `z ≠ 0` eventually in the punctured neighbourhood. -/
 private lemma eventually_ne_zero_punctured :
     ∀ᶠ z : ℂ in 𝓝[≠] (0 : ℂ), z ≠ 0 := by
-  have : ({(0 : ℂ)} : Set ℂ)ᶜ ∈ (𝓝[≠] (0 : ℂ)) := by
-    simpa using
-      (self_mem_nhdsWithin :
-        ({(0 : ℂ)} : Set ℂ)ᶜ ∈ nhdsWithin (0 : ℂ) ({(0 : ℂ)} : Set ℂ)ᶜ)
-  filter_upwards [this] with z hz
-  simpa using hz
+  change {z : ℂ | z ≠ 0} ∈ nhdsWithin (0 : ℂ) {z : ℂ | z ≠ 0}
+  rw [nhdsWithin, Filter.mem_inf_iff]
+  refine ⟨Set.univ, Filter.univ_mem, {z : ℂ | z ≠ 0}, mem_principal_self _, ?_⟩
+  simp
 
 /-- Eventually `‖z‖ ≤ 1` in the punctured neighbourhood of 0. -/
 lemma eventually_norm_le_one_punctured :
@@ -95,7 +112,8 @@ lemma tendsto_pow_punctured (m : ℕ) (hm : m ≠ 0) :
     have hpowR :
         Tendsto (fun z : ℂ => (‖z‖ : ℝ) ^ m) (𝓝[≠] (0 : ℂ)) (𝓝 ((0 : ℝ) ^ m)) := by
       simpa using (tendsto_norm_punctured.pow m)
-    have : ((0 : ℝ) ^ m) = 0 := by simp [zero_pow, hm]
+    have : ((0 : ℝ) ^ m) = 0 := by
+      simp [zero_pow, hm]
     have hpowR' :
         Tendsto (fun z : ℂ => ‖z‖ ^ m) (𝓝[≠] (0 : ℂ)) (𝓝 (0 : ℝ)) := by
       simpa [this] using hpowR
@@ -279,35 +297,36 @@ theorem tendsto_sin_sub_id_add_cubic_div_cubic :
     funext n
     by_cases hn : n = 1
     · subst hn
-      have hc1 : cubicCoeff 1 = (-(1 / 6 : ℂ)) := by simp [cubicCoeff]
+      have hc1 : cubicCoeff 1 = (-(1 / 6 : ℂ)) := by
+        simp [cubicCoeff]
       have hlin' :
           (sinTail1 z 1 + (6⁻¹ : ℂ) * z ^ 3) / z ^ 3
             = (sinTail1 z 1) / z ^ 3 + (6⁻¹ : ℂ) := by
         have hz3' : (z ^ 3 : ℂ) ≠ 0 := hz3
-        
         simp [div_eq_mul_inv, hz3', add_mul]
       simp [remTerm, f, δ, hc1, hlin']
-    · have hc0 : cubicCoeff n = 0 := by simp [cubicCoeff, hn]
+    · have hc0 : cubicCoeff n = 0 := by
+        simp [cubicCoeff, hn]
       simp [remTerm, f, δ, hn, hc0]
 
   have hs_rem :
       HasSum (fun n => remTerm z n) (((Complex.sin z - z) / z ^ 3) + (6⁻¹ : ℂ)) := by
-    have hs_sum : HasSum (fun n => f n + δ n) (((Complex.sin z - z) / z ^ 3) + (6⁻¹ : ℂ)) :=
+    have hs_sum :
+        HasSum (fun n => f n + δ n) (((Complex.sin z - z) / z ^ 3) + (6⁻¹ : ℂ)) :=
       hs_f.add hs_δ
-    -- rewrite the summand using hsplit, then discharge with hs_sum
-    rw [hsplit]
-    exact hs_sum
+    simpa [hsplit] using hs_sum
 
   have htsum :
-      (∑' n : ℕ, remTerm z n) = ((Complex.sin z - z) / z ^ 3) + (6⁻¹ : ℂ) :=
-    hs_rem.tsum_eq
+      (∑' n : ℕ, remTerm z n) = ((Complex.sin z - z) / z ^ 3) + (6⁻¹ : ℂ) := by
+    exact hs_rem.tsum_eq
 
   calc
     (∑' n : ℕ, remTerm z n)
         = ((Complex.sin z - z) / z ^ 3) + (6⁻¹ : ℂ) := htsum
-    _ = (Complex.sin z - z - (-(1 / 6 : ℂ) * z ^ 3)) / z ^ 3 := by
+    _ = ((Complex.sin z - z) + (6⁻¹ : ℂ) * z ^ 3) / z ^ 3 := by
       field_simp [hz3]
-      ring_nf
+    _ = (Complex.sin z - z - (-(1 / 6 : ℂ) * z ^ 3)) / z ^ 3 := by
+      ring
 
 /-- Main cubic expansion form. -/
 theorem tendsto_sin_sub_id_div_cubic :
@@ -316,30 +335,21 @@ theorem tendsto_sin_sub_id_div_cubic :
       (𝓝[≠] (0 : ℂ))
       (𝓝 (-(1 / 6 : ℂ))) := by
   have hrem := tendsto_sin_sub_id_add_cubic_div_cubic
-  have hadd :
+  have hconst :
+      Tendsto (fun _ : ℂ => (6⁻¹ : ℂ)) (𝓝[≠] (0 : ℂ)) (𝓝 (6⁻¹ : ℂ)) :=
+    tendsto_const_nhds
+  have hsub :
       Tendsto
         (fun z : ℂ =>
-          (-(1 / 6 : ℂ)) + (Complex.sin z - z - (-(1 / 6 : ℂ) * z ^ 3)) / z ^ 3)
+          ((Complex.sin z - z - (-(1 / 6 : ℂ) * z ^ 3)) / z ^ 3) - (6⁻¹ : ℂ))
         (𝓝[≠] (0 : ℂ))
-        (𝓝 (-(1 / 6 : ℂ) + 0)) := by
-    simpa using (tendsto_const_nhds.add hrem)
-
+        (𝓝 (0 - (6⁻¹ : ℂ))) := by
+    exact hrem.sub hconst
+  refine (tendsto_congr' ?_).2 (by simpa using hsub)
   have hne : ∀ᶠ z : ℂ in 𝓝[≠] (0 : ℂ), z ≠ 0 := eventually_ne_zero_punctured
-  refine (tendsto_congr' ?_).1 (by simpa [add_zero] using hadd)
   filter_upwards [hne] with z hz0
   have hz3 : (z ^ 3 : ℂ) ≠ 0 := pow_ne_zero 3 hz0
   field_simp [hz3]
   ring_nf
 
 end EulerBasel
-
-
-
-
-
-
-
-
-
-
-

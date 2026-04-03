@@ -97,14 +97,14 @@ theorem quadratic_coeff_unique
         =
       (fun z : ℂ => a * z ^ 2 - b * z ^ 2) := by
     funext z
-    ring_nf
+    ring
 
   have hEq'' :
       (fun z : ℂ => a * z ^ 2 - b * z ^ 2)
         =
       (fun z : ℂ => (a - b) * z ^ 2) := by
     funext z
-    ring_nf
+    ring
 
   have hdiff :
       (fun z : ℂ => (a - b) * z ^ 2) =o[𝓝 (0 : ℂ)] (fun z : ℂ => z ^ 2) := by
@@ -113,7 +113,7 @@ theorem quadratic_coeff_unique
       simpa [hEq'] using hdiff0
     simpa [hEq''] using h1
 
-  -- quotient characterisation 
+  -- quotient characterisation
   have hzero :
       ∀ z : ℂ, (z ^ 2 = 0) → ((a - b) * z ^ 2) = 0 := by
     intro z hz2

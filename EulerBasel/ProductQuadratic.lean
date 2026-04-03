@@ -101,7 +101,7 @@ theorem eulerProd_eq_one_sub_z2_mul_sum_add_z4_mul (N : ℕ) (z : ℂ) :
               simp [ih, hf]
         _   = 1 - z ^ 2 * (eulerSum N + c)
                 + z ^ 4 * (eulerRemainder N z + eulerSum N * c - z ^ 2 * eulerRemainder N z * c) := by
-              ring_nf
+              ring
         _   = 1 - z ^ 2 * eulerSum (N + 1) + z ^ 4 * eulerRemainder (N + 1) z := by
               simp [hsum, hrem, sub_eq_add_neg, add_assoc, mul_assoc]
 
@@ -200,10 +200,3 @@ theorem eulerProd_sub_quadratic_isLittleO (N : ℕ) :
 end
 
 end EulerBasel
-
-
-
-
-
-
-

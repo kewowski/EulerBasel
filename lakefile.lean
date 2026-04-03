@@ -4,7 +4,7 @@ open Lake DSL
 package euler_style_basel where
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4.git"
+  "https://github.com/leanprover-community/mathlib4.git" @ "v4.29.0-rc4"
 
 @[default_target]
 lean_lib EulerBasel

@@ -20,6 +20,10 @@ open Filter
 namespace EulerBasel
 noncomputable section
 
+local instance : ContinuousSMul ℝ ℂ where
+  continuous_smul := by
+    change Continuous (fun p : ℝ × ℂ => ((p.1 : ℂ) * p.2))
+    exact ((Complex.ofRealCLM : ℝ →L[ℝ] ℂ).continuous.comp continuous_fst).mul continuous_snd
 /--
 FTC identity on `[0,1]` for the integrating factor along the segment `s ↦ (s:ℂ)*z`.
 

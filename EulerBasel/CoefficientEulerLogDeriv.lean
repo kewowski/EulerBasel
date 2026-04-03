@@ -20,21 +20,18 @@ theorem tendsto_logDeriv_eulerProd :
       atTop
       (𝓝 (logDeriv eulerLimitFun z)) := by
   intro z hz
-  let z' : nearZeroPunctured := ⟨z, hz⟩
 
-  have hne : eulerLimitFun (↑z') ≠ 0 :=
-    eulerLimitFun_ne_zero_of_mem_nearZeroPunctured (z := (↑z' : ℂ)) z'.property
+  have hne : eulerLimitFun z ≠ 0 :=
+    eulerLimitFun_ne_zero_of_mem_nearZeroPunctured (z := z) hz
 
-  simpa [z'] using
+  simpa using
     (Complex.logDeriv_tendsto
       (s := nearZeroPunctured)
       isOpen_nearZeroPunctured
-      z'
+      hz
       tendstoLocallyUniformlyOn_eulerProd_nearZeroPunctured
       eventually_differentiableOn_eulerProd_nearZeroPunctured
       hne)
 
 end EulerBasel
-
-
 
